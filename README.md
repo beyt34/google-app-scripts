@@ -180,10 +180,10 @@ Tüm değişim fonksiyonları **ondalık oran** döner (100'e bölünmüş):
 
 | Kaynak | Sorun | Not |
 |--------|-------|-----|
-| **Investing.com** | TVC API ve ETF sayfası 403 Forbidden dönüyor | `getInvestingFiyat`, `getInvestingDegisimYuzde` → `investing-backup.gs`'e yedeklendi |
-| **Bitci** | Kullanılmıyor | `getBnbUsdt` → `investing-backup.gs`'e yedeklendi |
+| **Investing.com** | TVC API ve ETF sayfası 403 Forbidden dönüyor | `getInvestingFiyat`, `getInvestingDegisimYuzde` → `old/investing-old.gs`'e taşındı |
+| **Bitci** | Kullanılmıyor | `getBnbUsdt` → `old/investing-old.gs`'e taşındı |
 | **Yahoo Finance tarihsel** | ZGOLD/GLDTR için geçmiş veri dönmüyor (`validRanges: ["1d","5d"]`) | Sadece günlük fiyat alınabilir |
-| **TradingView sayfa scraping** | SPA — fiyat client-side JS ile yükleniyor | `getBYF` → `investing-backup.gs`'e yedeklendi; Scanner API çalışıyor |
+| **TradingView sayfa scraping** | SPA — fiyat client-side JS ile yükleniyor | `getBYF` → `old/investing-old.gs`'e taşındı; Scanner API çalışıyor |
 
 ---
 
@@ -193,9 +193,9 @@ Tüm değişim fonksiyonları **ondalık oran** döner (100'e bölünmüş):
 |-------|----------|
 | `myPortfoyApp.gs` | Ana Apps Script dosyası (tüm fonksiyonlar) |
 | `BYF_PRICE.gs` | BYF fonksiyonlarının ayrı kopyası (referans) |
-| `investing-backup.gs` | Kaldırılan fonksiyonlar: Investing.com, TradingView scraping, Bitci (yedek) |
-| `tefas-worker.backup.js` | Eski TEFAS Cloudflare Worker (kullanım dışı, yedek) |
-| `tefas-worker.backup.gs` | Eski TEFAS Apps Script kodu (kullanım dışı, yedek) |
+| `old/investing-old.gs` | Kaldırılan fonksiyonlar: Investing.com, TradingView scraping, Bitci |
+| `old/tefas-worker-old.js` | Eski TEFAS Cloudflare Worker |
+| `old/tefas-worker-old.gs` | Eski TEFAS Apps Script kodu |
 
 ---
 
