@@ -24,6 +24,7 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Desteklenen semboller:** `USDTTRY`, `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `AVAXUSDT`, `XRPUSDT`
 
 **Kullanım:**
+
 ```
 =getBtcturkPrice("BTCUSDT")        → 95000
 =getBtcturkPriceChange("BTCUSDT")  → 0.023 (%2,3)
@@ -43,6 +44,7 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Desteklenen semboller:** `BNBUSDT` (ve CoinTR'de listelenen diğerleri)
 
 **Kullanım:**
+
 ```
 =getCoinTrPrice("BNBUSDT")
 =getCoinTrPriceChange("BNBUSDT")
@@ -62,12 +64,31 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Sembol dönüşümü:** `.F` → `.IS` (Yahoo Finance BIST formatı)
 
 **Kullanım:**
+
 ```
 =BYF_PRICE("GLDTR.F")    → 557
 =BYF_CHANGE("GLDTR.F")   → 0.0036 (%0,36)
 ```
 
 **Yardımcı fonksiyon:** `_fetchYahooChart(symbol)` — Yahoo Finance chart API'sinden `meta` nesnesini döner (`regularMarketPrice`, `chartPreviousClose` vb.)
+
+---
+
+### BIST - Fiyat & Günlük Değişim (TradingView)
+
+| Fonksiyon | Açıklama | Kaynak |
+|-----------|----------|--------|
+| `BIST_PRICE(symbol)` | Son işlem fiyatı (TRY) | [TradingView Scanner](https://scanner.tradingview.com) |
+| `BIST_CHANGE(symbol)` | Günlük değişim oranı | TradingView Scanner |
+
+**Desteklenen semboller:** Tüm BIST sembolleri — `ALTIN.S1`, `GARAN`, `THYAO`, `ASELS` vb.
+
+**Kullanım:**
+
+```
+=BIST_PRICE("ALTIN.S1")    → 3847.5
+=BIST_CHANGE("ALTIN.S1")   → 0.0123 (%1,23)
+```
 
 ---
 
@@ -80,6 +101,7 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Desteklenen semboller:** Tüm BIST sembolleri — `GLDTR.F`, `ZGOLD.F`, `GMSTR.F`, `ALTIN.S1` vb.
 
 **Sembol dönüşümü:** Nokta ve sonrası kaldırılır → `BIST:` eklenir
+
 - `GLDTR.F` → `BIST:GLDTR`
 - `ALTIN.S1` → `BIST:ALTIN`
 
@@ -94,6 +116,7 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 | > 180 | `Perf.Y` | Yıllık |
 
 **Kullanım:**
+
 ```
 =BYF_CHANGE_PERIOD("GLDTR.F"; 7)      → -0.0611 (%-6,11)
 =BYF_CHANGE_PERIOD("ALTIN.S1"; 30)    → -0.0706 (%-7,06)
@@ -104,12 +127,38 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 
 ---
 
+### TEFAS - Yatırım Fonu (TEFAS API)
+
+| Fonksiyon | Açıklama | Kaynak |
+|-----------|----------|--------|
+| `TEFAS_FON_PRICE(fonKod)` | Son fon fiyatı (TRY) | [TEFAS](https://www.tefas.gov.tr) |
+| `TEFAS_FON_CHANGE(fonKod)` | 24 saatlik değişim oranı | TEFAS API |
+| `TEFAS_FON_GETIRI(fonKod, ay)` | Dönemsel getiri (1/3/6/12 ay) | TEFAS API |
+
+**Desteklenen semboller:** Tüm TEFAS fon kodları — `GTL`, `YAC`, `MAC` vb.
+
+**Cache:** Aynı fon kodu için tüm fonksiyonlar 1 saat boyunca tek API çağrısı yapar.
+
+**Kullanım:**
+
+```
+=TEFAS_FON_PRICE("GTL")        → 0.120084
+=TEFAS_FON_CHANGE("GTL")       → 0.003946 (%0,39)
+=TEFAS_FON_GETIRI("GTL"; 1)    → 0.030507 (%3,05)
+=TEFAS_FON_GETIRI("GTL"; 3)    → 0.091564 (%9,16)
+=TEFAS_FON_GETIRI("GTL"; 6)    → 0.200288 (%20,03)
+=TEFAS_FON_GETIRI("GTL"; 12)   → 0.492487 (%49,25)
+```
+
+---
+
 ## API Kaynakları Özet
 
 | Kaynak | Kullanım | Veri Tipi |
 |--------|----------|-----------|
 | **Yahoo Finance** | BYF fiyat + günlük değişim | JSON API |
-| **TradingView Scanner** | 7d/30d/90d/180d/365d değişim | JSON POST API |
+| **TradingView Scanner** | BIST fiyat + günlük + dönemsel değişim | JSON POST API |
+| **TEFAS** | Yatırım fonu fiyat + 24h değişim + 1/3/6/12 ay getiri | JSON API |
 | **BtcTurk** | Kripto fiyat + 24h değişim | JSON API |
 | **CoinTR** | Kripto fiyat + 24h değişim | JSON API |
 
@@ -131,7 +180,6 @@ Tüm değişim fonksiyonları **ondalık oran** döner (100'e bölünmüş):
 
 | Kaynak | Sorun | Not |
 |--------|-------|-----|
-| **TEFAS** (`tefas.gov.tr`) | F5 BIG-IP WAF — JavaScript challenge + obfuscated bot koruması | Apps Script, Cloudflare Worker'dan erişilemiyor |
 | **Investing.com** | TVC API ve ETF sayfası 403 Forbidden dönüyor | `getInvestingFiyat`, `getInvestingDegisimYuzde` → `investing-backup.gs`'e yedeklendi |
 | **Bitci** | Kullanılmıyor | `getBnbUsdt` → `investing-backup.gs`'e yedeklendi |
 | **Yahoo Finance tarihsel** | ZGOLD/GLDTR için geçmiş veri dönmüyor (`validRanges: ["1d","5d"]`) | Sadece günlük fiyat alınabilir |
@@ -146,13 +194,14 @@ Tüm değişim fonksiyonları **ondalık oran** döner (100'e bölünmüş):
 | `myPortfoyApp.gs` | Ana Apps Script dosyası (tüm fonksiyonlar) |
 | `BYF_PRICE.gs` | BYF fonksiyonlarının ayrı kopyası (referans) |
 | `investing-backup.gs` | Kaldırılan fonksiyonlar: Investing.com, TradingView scraping, Bitci (yedek) |
-| `tefas-worker.js` | TEFAS proxy Cloudflare Worker (WAF nedeniyle çalışmıyor) |
+| `tefas-worker.backup.js` | Eski TEFAS Cloudflare Worker (kullanım dışı, yedek) |
+| `tefas-worker.backup.gs` | Eski TEFAS Apps Script kodu (kullanım dışı, yedek) |
 
 ---
 
 ## Yeni Fonksiyon Ekleme Rehberi
 
-### Yeni bir API kaynağı eklemek için:
+### Yeni bir API kaynağı eklemek için
 
 1. API'nin Apps Script'ten (`UrlFetchApp.fetch`) erişilebilir olduğunu doğrula
 2. Yanıt formatını kontrol et (JSON mu, HTML mi?)
@@ -160,7 +209,7 @@ Tüm değişim fonksiyonları **ondalık oran** döner (100'e bölünmüş):
 4. Fonksiyonu `myPortfoyApp.gs`'e ekle
 5. Bu dokümana ekle
 
-### TradingView Scanner'a yeni sütun eklemek için:
+### TradingView Scanner'a yeni sütun eklemek için
 
 Mevcut `columns` listesine eklenebilecek TradingView sütunları:
 
@@ -180,10 +229,13 @@ change         → Günlük değişim (mutlak)
 change_abs     → Günlük değişim (mutlak fiyat farkı)
 ```
 
-### Yeni BIST hissesi için `BYF_CHANGE_PERIOD` kullanımı:
+### Yeni BIST hissesi için `BIST_PRICE` / `BIST_CHANGE` / `BYF_CHANGE_PERIOD` kullanımı
 
 Ek kod gerekmez — herhangi bir BIST sembolü çalışır:
+
 ```
+=BIST_PRICE("ALTIN.S1")
+=BIST_CHANGE("ALTIN.S1")
 =BYF_CHANGE_PERIOD("THYAO"; 30)
 =BYF_CHANGE_PERIOD("ASELS"; 365)
 =BYF_CHANGE_PERIOD("GARAN"; 7)
