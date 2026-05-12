@@ -95,7 +95,7 @@ Kurulum gerektirmiyor, dogrudan Google'dan besleniyor, `GARAN`, `THYAO`, `BIMAS`
 
 ### Script Gereken Durumlar
 
-Ancak `ALTIN.S1` veya `GUMUS.S1` gibi BIST'te islem goren sertifikalar `GOOGLEFINANCE`'te yer almiyor. Bunlar icin ilk akla gelen `IMPORTXML` ile sayfa cekme, ama o da uzun omurlu olmuyor.
+Ancak `ALTIN.S1` gibi BIST'te islem goren sertifikalar `GOOGLEFINANCE`'te yer almiyor. Bunlar icin ilk akla gelen `IMPORTXML` ile sayfa cekme, ama o da uzun omurlu olmuyor.
 
 Bunun yerine TradingView Scanner API'sini kullandim:
 

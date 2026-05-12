@@ -1,0 +1,39 @@
+TÜM TEFAS, BIST, BYF ve KRİPTO VERİLERİ TEK BİR GOOGLE SHEETS'TE
+
+O günden sonra farklı bir yapı kurdum: Google Sheets'te custom function'lar yazıp arka planda Apps Script üzerinden ilgili API'leri çağırıyorum. Sonuç? Hem stabil hem otomatik bir portföy takip sistemi.
+
+---
+
+KRİPTO: BtcTurk ve CoinTR
+=getBtcturkPrice("BTCUSDT")
+=getCoinTrPrice("BNBUSDT")
+
+BYF: Yahoo Finance ve TradingView
+=BYF_PRICE("GLDTR.F")
+=BYF_CHANGE_PERIOD("GLDTR.F"; 30)
+
+BIST: ALTIN.S1 gibi sertifikalar
+=BIST_PRICE("ALTIN.S1")
+=BIST_CHANGE("ALTIN.S1")
+
+TEFAS: En karmaşık ama en güçlü
+=TEFAS_FON_PRICE("GTL")
+=TEFAS_FON_GETIRI("GTL"; 12)
+
+---
+
+Neden bu yaklaşım?
+
+- HTML scraping ölür, API'ler yaşar ✓
+- Hangi veriyi nereden çektiğimi tam kontrol ediyorum
+- Bir API değişirse sadece ilgili fonksiyonu güncelliyorum
+- Portföyüm her zaman sağlıklı ve güncel kalıyor
+
+---
+
+Tam kaynak kod:
+github.com/beyt34/google-app-scripts
+
+Yatırımlarınızı Google Sheets'te otomatik olarak takip etmek ister misiniz?
+
+#GoogleSheets #AppsScript #Yatırım #Veri #Otomasyon #TEFAS #BIST #Kripto #GoogleFinance
