@@ -12,6 +12,30 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 
 ---
 
+## Otomatik Yenileme (Refresh)
+
+Google Sheets custom function'ları sayfa açılışında bazen `0` döner (eşzamanlı API kota aşımı). Bu sorunu çözmek için refresh mekanizması eklenmiştir.
+
+**Nasıl çalışır:**
+
+1. `onOpen()` trigger'ı sayfa açılışında **Summary** sayfasının **O1** hücresine timestamp yazar
+2. Menüden **Portföy → Verileri Yenile** ile elle tetiklenebilir
+3. Formüller `Summary!$O$1` referansını dummy parametre olarak alır → O1 değişince yeniden hesaplanır
+
+**Formül formatı:**
+
+```
+=BIST_PRICE("ALTIN.S1"; Summary!$O$1)
+=BIST_CHANGE("DMLKT"; Summary!$O$1)
+=getBtcturkPrice("BTCUSDT"; Summary!$O$1)
+=TEFAS_FON_PRICE("GTL"; Summary!$O$1)
+=BYF_CHANGE_PERIOD("GLDTR.F"; 7; Summary!$O$1)
+```
+
+> **Not:** Custom function'lar ekstra parametreyi yoksayar — sadece Sheets'in recalculate mekanizmasını tetikler.
+
+---
+
 ## Fonksiyonlar
 
 ### Kripto - BtcTurk
@@ -26,8 +50,8 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Kullanım:**
 
 ```
-=getBtcturkPrice("BTCUSDT")        → 95000
-=getBtcturkPriceChange("BTCUSDT")  → 0.023 (%2,3)
+=getBtcturkPrice("BTCUSDT"; Summary!$O$1)        → 95000
+=getBtcturkPriceChange("BTCUSDT"; Summary!$O$1)  → 0.023 (%2,3)
 ```
 
 **Dönüş:** `getBtcturkPriceChange` değeri 100'e bölünmüş gelir, hücre formatı `%` ise doğrudan görünür.
@@ -46,8 +70,8 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Kullanım:**
 
 ```
-=getCoinTrPrice("BNBUSDT")
-=getCoinTrPriceChange("BNBUSDT")
+=getCoinTrPrice("BNBUSDT"; Summary!$O$1)
+=getCoinTrPriceChange("BNBUSDT"; Summary!$O$1)
 ```
 
 ---
@@ -66,8 +90,8 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Kullanım:**
 
 ```
-=BYF_PRICE("GLDTR.F")    → 557
-=BYF_CHANGE("GLDTR.F")   → 0.0036 (%0,36)
+=BYF_PRICE("GLDTR.F"; Summary!$O$1)    → 557
+=BYF_CHANGE("GLDTR.F"; Summary!$O$1)   → 0.0036 (%0,36)
 ```
 
 **Yardımcı fonksiyon:** `_fetchYahooChart(symbol)` — Yahoo Finance chart API'sinden `meta` nesnesini döner (`regularMarketPrice`, `chartPreviousClose` vb.)
@@ -81,13 +105,17 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 | `BIST_PRICE(symbol)` | Son işlem fiyatı (TRY) | [TradingView Scanner](https://scanner.tradingview.com) |
 | `BIST_CHANGE(symbol)` | Günlük değişim oranı | TradingView Scanner |
 
-**Desteklenen semboller:** Tüm BIST sembolleri — `ALTIN.S1`, `GARAN`, `THYAO`, `ASELS` vb.
+**Desteklenen semboller:** Tüm BIST sembolleri — `ALTIN.S1`, `GARAN`, `THYAO`, `ASELS`, `DMLKT` vb.
+
+> **Not:** `DMLKT` (Damla Kent Projesi Gayrimenkul Sertifikası) gibi GYO/sertifika enstrümanları da TradingView Scanner üzerinden desteklenir. İş Yatırım'da `DMLKTG` olarak listelense de TradingView ticker'ı `DMLKT`'dir.
 
 **Kullanım:**
 
 ```
-=BIST_PRICE("ALTIN.S1")    → 3847.5
-=BIST_CHANGE("ALTIN.S1")   → 0.0123 (%1,23)
+=BIST_PRICE("ALTIN.S1"; Summary!$O$1)    → 3847.5
+=BIST_CHANGE("ALTIN.S1"; Summary!$O$1)   → 0.0123 (%1,23)
+=BIST_PRICE("DMLKT"; Summary!$O$1)       → 6.12
+=BIST_CHANGE("DMLKT"; Summary!$O$1)      → 0.0099 (%0,99)
 ```
 
 ---
@@ -98,12 +126,13 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 |-----------|----------|--------|
 | `BYF_CHANGE_PERIOD(symbol, days)` | Belirli dönem değişim oranı | [TradingView Scanner](https://scanner.tradingview.com) |
 
-**Desteklenen semboller:** Tüm BIST sembolleri — `GLDTR.F`, `ZGOLD.F`, `GMSTR.F`, `ALTIN.S1` vb.
+**Desteklenen semboller:** Tüm BIST sembolleri — `GLDTR.F`, `ZGOLD.F`, `GMSTR.F`, `ALTIN.S1`, `DMLKT` vb.
 
-**Sembol dönüşümü:** Nokta ve sonrası kaldırılır → `BIST:` eklenir
+**Sembol dönüşümü:** Nokta ve sonrası kaldırılır → `BIST:` eklenir (nokta yoksa aynen kalır)
 
 - `GLDTR.F` → `BIST:GLDTR`
 - `ALTIN.S1` → `BIST:ALTIN`
+- `DMLKT` → `BIST:DMLKT`
 
 **Dönem eşleşmesi:**
 
@@ -118,9 +147,11 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Kullanım:**
 
 ```
-=BYF_CHANGE_PERIOD("GLDTR.F"; 7)      → -0.0611 (%-6,11)
-=BYF_CHANGE_PERIOD("ALTIN.S1"; 30)    → -0.0706 (%-7,06)
-=BYF_CHANGE_PERIOD("GMSTR.F"; 365)    → 1.4114 (%141,14)
+=BYF_CHANGE_PERIOD("GLDTR.F"; 7; Summary!$O$1)      → -0.0611 (%-6,11)
+=BYF_CHANGE_PERIOD("ALTIN.S1"; 30; Summary!$O$1)    → -0.0706 (%-7,06)
+=BYF_CHANGE_PERIOD("GMSTR.F"; 365; Summary!$O$1)    → 1.4114 (%141,14)
+=BYF_CHANGE_PERIOD("DMLKT"; 30; Summary!$O$1)       → -0.0016 (%-0,16)
+=BYF_CHANGE_PERIOD("DMLKT"; 365; Summary!$O$1)      → -0.1947 (%-19,47)
 ```
 
 **Dönüş:** Ondalık oran (100'e bölünmüş). Hücre formatını `%` yapınca doğru görünür.
@@ -142,12 +173,12 @@ Google E-Tablolar'da portföy takibi için özel fonksiyonlar. Kripto, BIST hiss
 **Kullanım:**
 
 ```
-=TEFAS_FON_PRICE("GTL")        → 0.120084
-=TEFAS_FON_CHANGE("GTL")       → 0.003946 (%0,39)
-=TEFAS_FON_GETIRI("GTL"; 1)    → 0.030507 (%3,05)
-=TEFAS_FON_GETIRI("GTL"; 3)    → 0.091564 (%9,16)
-=TEFAS_FON_GETIRI("GTL"; 6)    → 0.200288 (%20,03)
-=TEFAS_FON_GETIRI("GTL"; 12)   → 0.492487 (%49,25)
+=TEFAS_FON_PRICE("GTL"; Summary!$O$1)        → 0.120084
+=TEFAS_FON_CHANGE("GTL"; Summary!$O$1)       → 0.003946 (%0,39)
+=TEFAS_FON_GETIRI("GTL"; 1; Summary!$O$1)    → 0.030507 (%3,05)
+=TEFAS_FON_GETIRI("GTL"; 3; Summary!$O$1)    → 0.091564 (%9,16)
+=TEFAS_FON_GETIRI("GTL"; 6; Summary!$O$1)    → 0.200288 (%20,03)
+=TEFAS_FON_GETIRI("GTL"; 12; Summary!$O$1)   → 0.492487 (%49,25)
 ```
 
 ---
@@ -192,7 +223,6 @@ Tüm değişim fonksiyonları **ondalık oran** döner (100'e bölünmüş):
 | Dosya | Açıklama |
 |-------|----------|
 | `myPortfoyApp.gs` | Ana Apps Script dosyası (tüm fonksiyonlar) |
-| `BYF_PRICE.gs` | BYF fonksiyonlarının ayrı kopyası (referans) |
 | `old/investing-old.gs` | Kaldırılan fonksiyonlar: Investing.com, TradingView scraping, Bitci |
 | `old/tefas-worker-old.js` | Eski TEFAS Cloudflare Worker |
 | `old/tefas-worker-old.gs` | Eski TEFAS Apps Script kodu |
@@ -231,12 +261,15 @@ change_abs     → Günlük değişim (mutlak fiyat farkı)
 
 ### Yeni BIST hissesi için `BIST_PRICE` / `BIST_CHANGE` / `BYF_CHANGE_PERIOD` kullanımı
 
-Ek kod gerekmez — herhangi bir BIST sembolü çalışır:
+Ek kod gerekmez — herhangi bir BIST sembolü çalışır (hisse, BYF, GYO sertifikası vb.):
 
 ```
-=BIST_PRICE("ALTIN.S1")
-=BIST_CHANGE("ALTIN.S1")
-=BYF_CHANGE_PERIOD("THYAO"; 30)
-=BYF_CHANGE_PERIOD("ASELS"; 365)
-=BYF_CHANGE_PERIOD("GARAN"; 7)
+=BIST_PRICE("ALTIN.S1"; Summary!$O$1)
+=BIST_PRICE("DMLKT"; Summary!$O$1)
+=BIST_CHANGE("ALTIN.S1"; Summary!$O$1)
+=BIST_CHANGE("DMLKT"; Summary!$O$1)
+=BYF_CHANGE_PERIOD("THYAO"; 30; Summary!$O$1)
+=BYF_CHANGE_PERIOD("ASELS"; 365; Summary!$O$1)
+=BYF_CHANGE_PERIOD("GARAN"; 7; Summary!$O$1)
+=BYF_CHANGE_PERIOD("DMLKT"; 90; Summary!$O$1)
 ```

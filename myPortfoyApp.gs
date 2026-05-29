@@ -1,6 +1,6 @@
 /**
  * TEFAS'tan yatırım fonu verisi çeker (direkt, Worker gerektirmez).
- * Sonuç 5 dakika boyunca CacheService'te tutulur — aynı fon için
+ * Sonuç 1 saat boyunca CacheService'te tutulur — aynı fon için
  * TEFAS_FON_PRICE / TEFAS_FON_CHANGE / TEFAS_FON_GETIRI tek API çağrısı yapar.
  * @param {string} fonKod
  * @return {object|null} {sonFiyat, oncekiFiyat, degisim24h, tarih, getiri1ay, getiri3ay, getiri6ay, getiri12ay}
@@ -184,9 +184,12 @@ function getBtcturkPrice(symbol) {
     }
 
     var url = 'https://api.btcturk.com/api/v2/ticker?pairSymbol=' + encodeURIComponent(symbol);
-    var response = UrlFetchApp.fetch(url);
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+        Logger.log("BtcTurk API hata (" + symbol + "): " + response.getResponseCode());
+        return 0;
+    }
     var json = JSON.parse(response.getContentText());
-    //console.log(json);
 
     var price = json.data[0].last;
 
@@ -212,9 +215,12 @@ function getBtcturkPriceChange(symbol) {
     }
 
     var url = 'https://api.btcturk.com/api/v2/ticker?pairSymbol=' + encodeURIComponent(symbol);
-    var response = UrlFetchApp.fetch(url);
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+        Logger.log("BtcTurk API hata (" + symbol + "): " + response.getResponseCode());
+        return 0;
+    }
     var json = JSON.parse(response.getContentText());
-    //console.log(json);
 
     var dailyPercent = (json.data[0].dailyPercent) / 100.0;
 
@@ -235,9 +241,12 @@ function getCoinTrPrice(symbol) {
     }
 
     var url = 'https://api.cointr.com/api/v2/spot/market/tickers?symbol=' + encodeURIComponent(symbol);
-    var response = UrlFetchApp.fetch(url);
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+        Logger.log("CoinTR API hata (" + symbol + "): " + response.getResponseCode());
+        return 0;
+    }
     var json = JSON.parse(response.getContentText());
-    //console.log(json);
 
     var price = json.data[0].lastPr;
 
@@ -264,9 +273,12 @@ function getCoinTrPriceChange(symbol) {
     }
 
     var url = 'https://api.cointr.com/api/v2/spot/market/tickers?symbol=' + encodeURIComponent(symbol);
-    var response = UrlFetchApp.fetch(url);
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+        Logger.log("CoinTR API hata (" + symbol + "): " + response.getResponseCode());
+        return 0;
+    }
     var json = JSON.parse(response.getContentText());
-    //console.log(json);
 
     var change24h = json.data[0].change24h;
 
@@ -464,4 +476,46 @@ function BYF_CHANGE_PERIOD(symbol, days) {
         Logger.log("Hata (" + symbol + " " + days + "d): " + e.message);
         return 0;
     }
+}
+
+// ============================================================
+// REFRESH MEKANİZMASI
+// Sayfa açıldığında custom function'lar bazen 0 döner çünkü
+// çok sayıda UrlFetchApp isteği aynı anda tetiklenir ve kota aşılır.
+// Çözüm: onOpen trigger'ı ile bir hücreye timestamp yazar,
+// formüllerde bu hücre dummy parametre olarak geçilir → kademeli recalc.
+// ============================================================
+
+/**
+ * Sayfa açıldığında otomatik çalışır.
+ * "Portföy" menüsü ekler ve refresh hücresini günceller.
+ */
+function onOpen() {
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu("Portföy")
+        .addItem("Verileri Yenile", "refreshData")
+        .addToUi();
+    refreshData();
+}
+
+/**
+ * Refresh hücresine timestamp yazar → bu hücreyi referans alan
+ * tüm custom function'lar sırayla yeniden hesaplanır.
+ *
+ * Kullanım: Formüllerinize son parametre olarak Summary sayfasındaki O1'i ekleyin:
+ *   =BIST_PRICE("ALTIN.S1"; Summary!$O$1)
+ *   =getBtcturkPrice("BTCUSDT"; Summary!$O$1)
+ *
+ * O1 hücresi sadece sayfa açılışında veya menüden
+ * "Portföy → Verileri Yenile" tıklandığında güncellenir.
+ */
+function refreshData() {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Summary");
+    if (!sheet) {
+        Logger.log("Summary sayfası bulunamadı");
+        return;
+    }
+    sheet.getRange("O1").setValue(new Date().getTime());
+    SpreadsheetApp.flush();
 }
