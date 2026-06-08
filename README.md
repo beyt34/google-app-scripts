@@ -158,17 +158,19 @@ Google Sheets custom function'ları sayfa açılışında bazen `0` döner (eşz
 
 ---
 
-### TEFAS - Yatırım Fonu (TEFAS API)
+### TEFAS - Yatırım Fonu (Ayna Siteler)
 
 | Fonksiyon | Açıklama | Kaynak |
 |-----------|----------|--------|
-| `TEFAS_FON_PRICE(fonKod)` | Son fon fiyatı (TRY) | [TEFAS](https://www.tefas.gov.tr) |
-| `TEFAS_FON_CHANGE(fonKod)` | 24 saatlik değişim oranı | TEFAS API |
-| `TEFAS_FON_GETIRI(fonKod, ay)` | Dönemsel getiri (1/3/6/12 ay) | TEFAS API |
+| `TEFAS_FON_PRICE(fonKod)` | Son fon fiyatı (TRY) | [fonyatirimcisi.com](https://fonyatirimcisi.com) |
+| `TEFAS_FON_CHANGE(fonKod)` | 24 saatlik değişim oranı | fonyatirimcisi.com |
+| `TEFAS_FON_GETIRI(fonKod, ay)` | Dönemsel getiri (1/3/6/12 ay) | [fonrapor.com](https://fonrapor.com) |
 
-**Desteklenen semboller:** Tüm TEFAS fon kodları — `GTL`, `YAC`, `MAC` vb.
+**Desteklenen semboller:** Tüm TEFAS fon kodları — `GTL`, `YAC`, `MAC`, `FGA`, `FGS`, `IPB`, `ZGD` vb.
 
-**Cache:** Aynı fon kodu için tüm fonksiyonlar 1 saat boyunca tek API çağrısı yapar.
+**Cache:** Aynı fon kodu için tüm fonksiyonlar 1 saat boyunca **tek HTTP turu** yapar (fonyatirimcisi + fonrapor → tek cache).
+
+> **Neden ayna site?** TEFAS resmi sitesi (2026-06 itibarıyla) F5/Imperva tabanlı JavaScript bot koruması kullanıyor. Apps Script'in `UrlFetchApp`'i bu challenge'ı çözemediği için hem `/tr/fon-detayli-analiz/...` sayfası hem de `fonFiyatBilgiGetir` API'si engelleniyor. Çözüm: TEFAS verisini server-side scraping engeli olmadan yayınlayan iki açık ayna kullanılıyor — `fonyatirimcisi.com` (meta description'dan fiyat + günlük değişim, mikro fiyatlı fonlarda da doğru) ve `fonrapor.com` (statik HTML tablo satırlarından 1/3/6/12 ay getirileri).
 
 **Kullanım:**
 
@@ -189,7 +191,8 @@ Google Sheets custom function'ları sayfa açılışında bazen `0` döner (eşz
 |--------|----------|-----------|
 | **Yahoo Finance** | BYF fiyat + günlük değişim | JSON API |
 | **TradingView Scanner** | BIST fiyat + günlük + dönemsel değişim | JSON POST API |
-| **TEFAS** | Yatırım fonu fiyat + 24h değişim + 1/3/6/12 ay getiri | JSON API |
+| **fonyatirimcisi.com** | TEFAS fonu fiyat + 24h değişim | HTML meta scrape |
+| **fonrapor.com** | TEFAS fonu 1/3/6/12 ay getiri | HTML tablo scrape |
 | **BtcTurk** | Kripto fiyat + 24h değişim | JSON API |
 | **CoinTR** | Kripto fiyat + 24h değişim | JSON API |
 
@@ -215,6 +218,7 @@ Tüm değişim fonksiyonları **ondalık oran** döner (100'e bölünmüş):
 | **Bitci** | Kullanılmıyor | `getBnbUsdt` → `old/investing-old.gs`'e taşındı |
 | **Yahoo Finance tarihsel** | ZGOLD/GLDTR için geçmiş veri dönmüyor (`validRanges: ["1d","5d"]`) | Sadece günlük fiyat alınabilir |
 | **TradingView sayfa scraping** | SPA — fiyat client-side JS ile yükleniyor | `getBYF` → `old/investing-old.gs`'e taşındı; Scanner API çalışıyor |
+| **TEFAS resmi sitesi** (2026-06) | F5/Imperva JS bot koruması — `UrlFetchApp` challenge'ı çözemiyor, fon sayfası ve `fonFiyatBilgiGetir` API'si engelleniyor | Önceki Cloudflare Worker (`old/tefas-worker-old.js`) ve doğrudan-fetch yöntemi de aynı sebepten çalışmıyor; fonyatirimcisi.com + fonrapor.com aynalarına geçildi |
 
 ---
 

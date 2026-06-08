@@ -1,12 +1,21 @@
 /**
- * TEFAS'tan yatırım fonu verisi çeker (direkt, Worker gerektirmez).
+ * TEFAS yatırım fonu verisi çeker.
+ *
+ * Not (2026-06): TEFAS resmi sitesi F5/Imperva tabanlı JavaScript bot koruması
+ * ekledi; Apps Script'in UrlFetchApp'i bu challenge'ı çözemiyor ve hem fon
+ * detay sayfası hem de fonFiyatBilgiGetir API'si engelleniyor. Bu yüzden veri
+ * TEFAS verisini yayınlayan iki halka açık aynadan çekiliyor:
+ *   - fonyatirimcisi.com → güncel fiyat + günlük değişim (mikro fiyatlarda da doğru)
+ *   - fonrapor.com       → 1 Ay / 3 Ay / 6 Ay / 1 Yıl getirileri (statik HTML tablo)
+ *
  * Sonuç 1 saat boyunca CacheService'te tutulur — aynı fon için
- * TEFAS_FON_PRICE / TEFAS_FON_CHANGE / TEFAS_FON_GETIRI tek API çağrısı yapar.
+ * TEFAS_FON_PRICE / TEFAS_FON_CHANGE / TEFAS_FON_GETIRI tek HTTP turu yapar.
+ *
  * @param {string} fonKod
- * @return {object|null} {sonFiyat, oncekiFiyat, degisim24h, tarih, getiri1ay, getiri3ay, getiri6ay, getiri12ay}
+ * @return {object|null} {sonFiyat, degisim24h, getiri1ay, getiri3ay, getiri6ay, getiri12ay}
  */
 function _fetchTefasFon(fonKod) {
-    var cacheKey = "tefas_fon_" + fonKod;
+    var cacheKey = "tefas_fon_v2_" + fonKod;
     var cache = CacheService.getScriptCache();
     var cached = cache.get(cacheKey);
     if (cached) {
@@ -14,84 +23,82 @@ function _fetchTefasFon(fonKod) {
     }
 
     var ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-    // 1. Adım: Fon sayfasını yükle → session cookie'leri al
-    var pageRes = UrlFetchApp.fetch("https://www.tefas.gov.tr/tr/fon-detayli-analiz/" + fonKod, {
+    var fetchOpts = {
         muteHttpExceptions: true,
         followRedirects: true,
         headers: {
             "User-Agent": ua,
-            "Accept": "text/html,application/xhtml+xml",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "tr-TR,tr;q=0.9"
         }
-    });
+    };
 
-    // Cookie'leri topla
-    var cookies = [];
-    var headers = pageRes.getAllHeaders();
-    var setCookie = headers["Set-Cookie"];
-    if (setCookie) {
-        var cookieList = Array.isArray(setCookie) ? setCookie : [setCookie];
-        cookieList.forEach(function(c) { cookies.push(c.split(";")[0]); });
-    }
-    var cookieStr = cookies.join("; ");
+    var result = {
+        sonFiyat: null,
+        degisim24h: null,
+        getiri1ay: null,
+        getiri3ay: null,
+        getiri6ay: null,
+        getiri12ay: null
+    };
 
-    // 2. Adım: API çağrısı
-    var apiRes = UrlFetchApp.fetch("https://www.tefas.gov.tr/api/funds/fonFiyatBilgiGetir", {
-        method: "post",
-        muteHttpExceptions: true,
-        contentType: "application/json",
-        payload: JSON.stringify({ fonKodu: fonKod, dil: "TR", periyod: 12 }),
-        headers: {
-            "User-Agent": ua,
-            "Referer": "https://www.tefas.gov.tr/tr/fon-detayli-analiz/" + fonKod,
-            "Origin": "https://www.tefas.gov.tr",
-            "Accept": "application/json, */*",
-            "Accept-Language": "tr-TR,tr;q=0.9",
-            "Cookie": cookieStr
+    // 1) Fiyat + günlük değişim → fonyatirimcisi.com
+    try {
+        var r1 = UrlFetchApp.fetch("https://fonyatirimcisi.com/fon/" + encodeURIComponent(fonKod), fetchOpts);
+        if (r1.getResponseCode() === 200) {
+            var html1 = r1.getContentText();
+            // meta description: "Güncel fiyat: 13.9162 ₺, Günlük değişim: -0.83%."
+            var m1 = html1.match(/G\u00fcncel fiyat:\s*([\d.,]+)\s*\u20ba[^"]*?G\u00fcnl\u00fck de\u011fi\u015fim:\s*([+\-]?[\d.,]+)%/);
+            if (m1) {
+                result.sonFiyat = parseFloat(m1[1].replace(',', '.'));
+                result.degisim24h = parseFloat(m1[2].replace(',', '.')) / 100;
+            } else {
+                Logger.log("fonyatirimcisi meta regex eşleşmedi: " + fonKod);
+            }
+        } else {
+            Logger.log("fonyatirimcisi HTTP " + r1.getResponseCode() + " (" + fonKod + ")");
         }
-    });
+    } catch (e) {
+        Logger.log("fonyatirimcisi hata (" + fonKod + "): " + e.message);
+    }
 
-    if (apiRes.getResponseCode() !== 200) {
-        Logger.log("TEFAS API hata " + apiRes.getResponseCode() + ": " + apiRes.getContentText().substring(0, 300));
+    // 2) Dönemsel getiriler → fonrapor.com (statik HTML tablo: <td>1 Ay</td><td>+3.15%</td>)
+    try {
+        var r2 = UrlFetchApp.fetch("https://fonrapor.com/fon/" + encodeURIComponent(fonKod), fetchOpts);
+        if (r2.getResponseCode() === 200) {
+            var html2 = r2.getContentText();
+            result.getiri1ay  = _extractFonraporGetiri(html2, "1 Ay");
+            result.getiri3ay  = _extractFonraporGetiri(html2, "3 Ay");
+            result.getiri6ay  = _extractFonraporGetiri(html2, "6 Ay");
+            result.getiri12ay = _extractFonraporGetiri(html2, "1 Y\u0131l");
+        } else {
+            Logger.log("fonrapor HTTP " + r2.getResponseCode() + " (" + fonKod + ")");
+        }
+    } catch (e) {
+        Logger.log("fonrapor hata (" + fonKod + "): " + e.message);
+    }
+
+    if (result.sonFiyat == null) {
         return null;
     }
 
-    var data = JSON.parse(apiRes.getContentText());
-    var list = data.resultList;
-    if (!list || list.length === 0) return null;
-
-    var son = list[list.length - 1];
-    var onceki = list.length >= 2 ? list[list.length - 2] : null;
-    var degisim = onceki ? (son.fiyat - onceki.fiyat) / onceki.fiyat : 0;
-
-    // Dönemsel getiri hesabı: N ay önceki fiyatı bul
-    function getiriHesapla(ayFarki) {
-        var hedefTarih = new Date(son.tarih);
-        hedefTarih.setMonth(hedefTarih.getMonth() - ayFarki);
-        var hedefZaman = hedefTarih.getTime();
-        var enYakin = null;
-        var minFark = Infinity;
-        for (var i = 0; i < list.length - 1; i++) {
-            var fark = Math.abs(new Date(list[i].tarih).getTime() - hedefZaman);
-            if (fark < minFark) { minFark = fark; enYakin = list[i]; }
-        }
-        return enYakin ? (son.fiyat - enYakin.fiyat) / enYakin.fiyat : null;
-    }
-
-    var result = {
-        sonFiyat: son.fiyat,
-        oncekiFiyat: onceki ? onceki.fiyat : null,
-        degisim24h: degisim,
-        tarih: son.tarih,
-        getiri1ay: getiriHesapla(1),
-        getiri3ay: getiriHesapla(3),
-        getiri6ay: getiriHesapla(6),
-        getiri12ay: getiriHesapla(12)
-    };
-
     cache.put(cacheKey, JSON.stringify(result), 3600); // 1 saat cache
     return result;
+}
+
+/**
+ * fonrapor.com HTML'inden "<td>LABEL</td><td ...>+X.XX%</td>" satırını çeker.
+ * @return {number|null} oran (0.0315 = %3,15)
+ */
+function _extractFonraporGetiri(html, label) {
+    // Escape regex meta-chars (label içerisinde yok ama güvenlik için)
+    var escLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    var re = new RegExp(">" + escLabel + "<\\/td>\\s*<td[^>]*>\\s*([+\\-]?[\\d.,]+)%", "i");
+    var m = html.match(re);
+    if (m) {
+        return parseFloat(m[1].replace(',', '.')) / 100;
+    }
+    return null;
 }
 
 /**
