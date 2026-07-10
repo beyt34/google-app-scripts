@@ -170,6 +170,8 @@ Google Sheets custom function'ları sayfa açılışında bazen `0` döner (eşz
 
 **Cache:** Aynı fon kodu için tüm fonksiyonlar 1 saat boyunca **tek HTTP turu** yapar (fonyatirimcisi + fonrapor → tek cache).
 
+**Hassasiyet:** Fiyat, sayfadaki `og:image` URL parametrelerinden (`og-fund?...&price=2.055579&change=0.126...`) **6 ondalık hane** olarak okunur; günlük değişim de yuvarlanmamış gelir. Bu parse başarısız olursa meta description'daki 4 haneye yuvarlanmış değere düşülür.
+
 > **Neden ayna site?** TEFAS resmi sitesi (2026-06 itibarıyla) F5/Imperva tabanlı JavaScript bot koruması kullanıyor. Apps Script'in `UrlFetchApp`'i bu challenge'ı çözemediği için hem `/tr/fon-detayli-analiz/...` sayfası hem de `fonFiyatBilgiGetir` API'si engelleniyor. Çözüm: TEFAS verisini server-side scraping engeli olmadan yayınlayan iki açık ayna kullanılıyor — `fonyatirimcisi.com` (meta description'dan fiyat + günlük değişim, mikro fiyatlı fonlarda da doğru) ve `fonrapor.com` (statik HTML tablo satırlarından 1/3/6/12 ay getirileri).
 
 **Kullanım:**

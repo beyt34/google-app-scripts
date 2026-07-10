@@ -15,7 +15,8 @@
  * @return {object|null} {sonFiyat, degisim24h, getiri1ay, getiri3ay, getiri6ay, getiri12ay}
  */
 function _fetchTefasFon(fonKod) {
-    var cacheKey = "tefas_fon_v2_" + fonKod;
+    fonKod = String(fonKod).toUpperCase();
+    var cacheKey = "tefas_fon_v3_" + fonKod;
     var cache = CacheService.getScriptCache();
     var cached = cache.get(cacheKey);
     if (cached) {
@@ -54,6 +55,14 @@ function _fetchTefasFon(fonKod) {
                 result.degisim24h = parseFloat(m1[2].replace(',', '.')) / 100;
             } else {
                 Logger.log("fonyatirimcisi meta regex eşleşmedi: " + fonKod);
+            }
+            // meta description fiyati 4 haneye yuvarliyor; og:image URL'si tam hassasiyet tasiyor:
+            // og-fund?code=TP2&amp;name=...&amp;price=2.055579&amp;category=...&amp;change=0.12605997785669787
+            // Eslesirse meta'dan gelen degerlerin uzerine yazilir (fiyat 6 hane, degisim yuvarlanmamis).
+            var mFull = html1.match(new RegExp("og-fund\\?code=" + fonKod + "&amp;[^\"]*price=([\\d.]+)[^\"]*change=([+\\-]?[\\d.]+)"));
+            if (mFull) {
+                result.sonFiyat = parseFloat(mFull[1]);
+                result.degisim24h = parseFloat(mFull[2]) / 100;
             }
         } else {
             Logger.log("fonyatirimcisi HTTP " + r1.getResponseCode() + " (" + fonKod + ")");
