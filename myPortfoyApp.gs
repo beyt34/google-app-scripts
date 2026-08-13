@@ -3,10 +3,20 @@
  *
  * Not (2026-06): TEFAS resmi sitesi F5/Imperva tabanlı JavaScript bot koruması
  * ekledi; Apps Script'in UrlFetchApp'i bu challenge'ı çözemiyor ve hem fon
- * detay sayfası hem de fonFiyatBilgiGetir API'si engelleniyor. Bu yüzden veri
- * TEFAS verisini yayınlayan iki halka açık aynadan çekiliyor:
- *   - fonyatirimcisi.com → güncel fiyat + günlük değişim (mikro fiyatlarda da doğru)
- *   - fonrapor.com       → 1 Ay / 3 Ay / 6 Ay / 1 Yıl getirileri (statik HTML tablo)
+ * detay sayfası hem de fonFiyatBilgiGetir API'si engelleniyor.
+ *
+ * Veri, fonyatirimcisi.com'un kendi JSON API'sinden tek çağrıda alınır:
+ *   GET https://api.fonyatirimcisi.com/api/v1/funds/{KOD}
+ *   → current_price, daily_change, monthly_return, three_month_return,
+ *     six_month_return, yearly_return (getiriler yüzde cinsinden)
+ *
+ * API "Origin not allowed" ile 403 döndüğü için Origin + Referer başlıkları
+ * gönderilir; fon kodu büyük harf olmalıdır.
+ *
+ * Not (2026-08): fonrapor.com client-side render'a geçti — statik HTML'de artık
+ * getiri tablosu yok ve /fon/{kod} tüm kodlar için "Fon Bulunamadı" döndürüyor.
+ * Bu yüzden HTML scraping tamamen bırakıldı; eski og:image parse'ı yalnızca
+ * API erişilemezse fiyat/değişim için yedek olarak kullanılıyor.
  *
  * Sonuç 1 saat boyunca CacheService'te tutulur — aynı fon için
  * TEFAS_FON_PRICE / TEFAS_FON_CHANGE / TEFAS_FON_GETIRI tek HTTP turu yapar.
@@ -16,7 +26,7 @@
  */
 function _fetchTefasFon(fonKod) {
     fonKod = String(fonKod).toUpperCase();
-    var cacheKey = "tefas_fon_v3_" + fonKod;
+    var cacheKey = "tefas_fon_v4_" + fonKod;
     var cache = CacheService.getScriptCache();
     var cached = cache.get(cacheKey);
     if (cached) {
@@ -43,48 +53,60 @@ function _fetchTefasFon(fonKod) {
         getiri12ay: null
     };
 
-    // 1) Fiyat + günlük değişim → fonyatirimcisi.com
+    // 1) Tek JSON çağrısı: fiyat + günlük değişim + dönemsel getiriler
     try {
-        var r1 = UrlFetchApp.fetch("https://fonyatirimcisi.com/fon/" + encodeURIComponent(fonKod), fetchOpts);
-        if (r1.getResponseCode() === 200) {
-            var html1 = r1.getContentText();
-            // meta description: "Güncel fiyat: 13.9162 ₺, Günlük değişim: -0.83%."
-            var m1 = html1.match(/G\u00fcncel fiyat:\s*([\d.,]+)\s*\u20ba[^"]*?G\u00fcnl\u00fck de\u011fi\u015fim:\s*([+\-]?[\d.,]+)%/);
-            if (m1) {
-                result.sonFiyat = parseFloat(m1[1].replace(',', '.'));
-                result.degisim24h = parseFloat(m1[2].replace(',', '.')) / 100;
-            } else {
-                Logger.log("fonyatirimcisi meta regex eşleşmedi: " + fonKod);
+        var apiOpts = {
+            muteHttpExceptions: true,
+            followRedirects: true,
+            headers: {
+                "User-Agent": ua,
+                "Accept": "application/json",
+                // API yalnızca yetkili origin'lere açık; ikisi de tek başına yeterli,
+                // Apps Script biri filtrelerse diğeri devrede kalsın diye ikisi de gönderiliyor.
+                "Origin": "https://fonyatirimcisi.com",
+                "Referer": "https://fonyatirimcisi.com/"
             }
-            // meta description fiyati 4 haneye yuvarliyor; og:image URL'si tam hassasiyet tasiyor:
-            // og-fund?code=TP2&amp;name=...&amp;price=2.055579&amp;category=...&amp;change=0.12605997785669787
-            // Eslesirse meta'dan gelen degerlerin uzerine yazilir (fiyat 6 hane, degisim yuvarlanmamis).
-            var mFull = html1.match(new RegExp("og-fund\\?code=" + fonKod + "&amp;[^\"]*price=([\\d.]+)[^\"]*change=([+\\-]?[\\d.]+)"));
-            if (mFull) {
-                result.sonFiyat = parseFloat(mFull[1]);
-                result.degisim24h = parseFloat(mFull[2]) / 100;
+        };
+        var rApi = UrlFetchApp.fetch("https://api.fonyatirimcisi.com/api/v1/funds/" + encodeURIComponent(fonKod), apiOpts);
+        if (rApi.getResponseCode() === 200) {
+            var d = JSON.parse(rApi.getContentText());
+            if (d.current_price != null) {
+                result.sonFiyat = parseFloat(d.current_price);
             }
+            result.degisim24h = _yuzdeToOran(d.daily_change);
+            result.getiri1ay = _yuzdeToOran(d.monthly_return);
+            result.getiri3ay = _yuzdeToOran(d.three_month_return);
+            result.getiri6ay = _yuzdeToOran(d.six_month_return);
+            result.getiri12ay = _yuzdeToOran(d.yearly_return);
         } else {
-            Logger.log("fonyatirimcisi HTTP " + r1.getResponseCode() + " (" + fonKod + ")");
+            Logger.log("fonyatirimcisi API HTTP " + rApi.getResponseCode() + " (" + fonKod + ")");
         }
     } catch (e) {
-        Logger.log("fonyatirimcisi hata (" + fonKod + "): " + e.message);
+        Logger.log("fonyatirimcisi API hata (" + fonKod + "): " + e.message);
     }
 
-    // 2) Dönemsel getiriler → fonrapor.com (statik HTML tablo: <td>1 Ay</td><td>+3.15%</td>)
-    try {
-        var r2 = UrlFetchApp.fetch("https://fonrapor.com/fon/" + encodeURIComponent(fonKod), fetchOpts);
-        if (r2.getResponseCode() === 200) {
-            var html2 = r2.getContentText();
-            result.getiri1ay  = _extractFonraporGetiri(html2, "1 Ay");
-            result.getiri3ay  = _extractFonraporGetiri(html2, "3 Ay");
-            result.getiri6ay  = _extractFonraporGetiri(html2, "6 Ay");
-            result.getiri12ay = _extractFonraporGetiri(html2, "1 Y\u0131l");
-        } else {
-            Logger.log("fonrapor HTTP " + r2.getResponseCode() + " (" + fonKod + ")");
+    // 2) Yedek: API erişilemezse HTML sayfasındaki og:image URL'sinden fiyat + değişim
+    // (og-fund?code=TP2&amp;...&amp;price=2.055579&amp;...&amp;change=0.1260599778) —
+    // dönemsel getiriler bu yolla alınamaz, sadece fiyat kurtarılır.
+    if (result.sonFiyat == null) {
+        try {
+            var r1 = UrlFetchApp.fetch("https://fonyatirimcisi.com/fon/" + encodeURIComponent(fonKod), fetchOpts);
+            if (r1.getResponseCode() === 200) {
+                var mFull = r1.getContentText().match(
+                    new RegExp("og-fund\\?code=" + fonKod + "&amp;[^\"]*price=([\\d.]+)[^\"]*change=([+\\-]?[\\d.]+)")
+                );
+                if (mFull) {
+                    result.sonFiyat = parseFloat(mFull[1]);
+                    result.degisim24h = parseFloat(mFull[2]) / 100;
+                } else {
+                    Logger.log("fonyatirimcisi og-fund parse edilemedi: " + fonKod);
+                }
+            } else {
+                Logger.log("fonyatirimcisi HTML HTTP " + r1.getResponseCode() + " (" + fonKod + ")");
+            }
+        } catch (e) {
+            Logger.log("fonyatirimcisi HTML hata (" + fonKod + "): " + e.message);
         }
-    } catch (e) {
-        Logger.log("fonrapor hata (" + fonKod + "): " + e.message);
     }
 
     if (result.sonFiyat == null) {
@@ -96,18 +118,15 @@ function _fetchTefasFon(fonKod) {
 }
 
 /**
- * fonrapor.com HTML'inden "<td>LABEL</td><td ...>+X.XX%</td>" satırını çeker.
- * @return {number|null} oran (0.0315 = %3,15)
+ * API'den yüzde cinsinden gelen değeri orana çevirir (4.1021 → 0.041021).
+ * @param {number|null} v
+ * @return {number|null} null ise fonun o dönem için geçmişi yetmiyordur
  */
-function _extractFonraporGetiri(html, label) {
-    // Escape regex meta-chars (label içerisinde yok ama güvenlik için)
-    var escLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    var re = new RegExp(">" + escLabel + "<\\/td>\\s*<td[^>]*>\\s*([+\\-]?[\\d.,]+)%", "i");
-    var m = html.match(re);
-    if (m) {
-        return parseFloat(m[1].replace(',', '.')) / 100;
+function _yuzdeToOran(v) {
+    if (v == null) {
+        return null;
     }
-    return null;
+    return v / 100;
 }
 
 /**
