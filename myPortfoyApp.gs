@@ -494,7 +494,7 @@ function BYF_CHANGE_PERIOD(symbol, days) {
 
         if (res.getResponseCode() !== 200) {
             Logger.log("HTTP hata: " + res.getResponseCode() + " - " + tvSymbol);
-            return 0;
+            return _byfDonemYedek(symbol, days);
         }
 
         var data = JSON.parse(res.getContentText());
@@ -505,12 +505,177 @@ function BYF_CHANGE_PERIOD(symbol, days) {
             return pct;
         }
 
-        Logger.log("Değişim bulunamadı: " + symbol + " " + days + "d");
-        return 0;
+        // TradingView bu sembol için veri vermedi (ör. "mutual" etiketli ZPX30, Z30EA)
+        return _byfDonemYedek(symbol, days);
     } catch (e) {
         Logger.log("Hata (" + symbol + " " + days + "d): " + e.message);
         return 0;
     }
+}
+
+// ============================================================
+// BYF GÜN SONU GEÇMİŞİ
+// TradingView bazı BYF'leri (ZPX30, Z30EA) "mutual" tipinde tutuyor;
+// turkey scanner bunlar için veri döndürmüyor. Yahoo da yalnızca günün
+// fiyatını veriyor, geçmiş yok. Bu sembollerin kapanış fiyatları her gün
+// bir tetikleyiciyle BYF_Gecmis sayfasına yazılır, BYF_CHANGE_PERIOD
+// TradingView'dan veri alamadığında dönemsel değişimi buradan hesaplar.
+//
+// Kurulum: Apps Script editöründen bir kez kurTetikleyici() çalıştırılır.
+// Yeni sembol eklemek için BYF_GECMIS_SEMBOLLER listesine eklemek yeterli.
+// ============================================================
+
+var BYF_GECMIS_SAYFA = "BYF_Gecmis";
+var BYF_GECMIS_SEMBOLLER = ["ZPX30.F", "Z30EA.F"];
+var BYF_GECMIS_TZ = "Europe/Istanbul";
+
+/**
+ * Gün sonu tetikleyicisinin çağırdığı fonksiyon. Listedeki her sembolün
+ * Yahoo'daki son fiyatını ait olduğu işlem günüyle BYF_Gecmis sayfasına yazar.
+ *
+ * Aynı tarih + sembol için kayıt varsa fiyatın üzerine yazar: gün içinde elle
+ * çalıştırılırsa akşamki koşu kapanış fiyatıyla düzeltir. Hafta sonu ve tatilde
+ * Yahoo son işlem gününü döndürdüğü için yeni satır oluşmaz.
+ */
+function byfGunSonuKaydet() {
+    var sheet = _byfGecmisSayfasi(true);
+    var sonSatir = sheet.getLastRow();
+    var mevcut = sonSatir > 1 ? sheet.getRange(2, 1, sonSatir - 1, 3).getValues() : [];
+
+    var index = {}; // "tarih|sembol" → sayfadaki satır numarası
+    for (var i = 0; i < mevcut.length; i++) {
+        index[_byfTarihMetni(mevcut[i][0]) + "|" + String(mevcut[i][1]).toUpperCase()] = i + 2;
+    }
+
+    var yeni = [];
+    BYF_GECMIS_SEMBOLLER.forEach(function (s) {
+        var sembol = String(s).toUpperCase();
+        try {
+            var meta = _fetchYahooChart(sembol);
+            if (!meta || !meta.regularMarketPrice || !meta.regularMarketTime) {
+                Logger.log("BYF geçmiş: fiyat alınamadı " + sembol);
+                return;
+            }
+            var tarih = Utilities.formatDate(new Date(meta.regularMarketTime * 1000), BYF_GECMIS_TZ, "yyyy-MM-dd");
+            var satir = index[tarih + "|" + sembol];
+            if (satir) {
+                sheet.getRange(satir, 3).setValue(meta.regularMarketPrice);
+            } else {
+                yeni.push([tarih, sembol, meta.regularMarketPrice]);
+            }
+            Logger.log("BYF geçmiş: " + sembol + " " + tarih + " = " + meta.regularMarketPrice);
+        } catch (e) {
+            Logger.log("BYF geçmiş hata (" + sembol + "): " + e.message);
+        }
+    });
+
+    if (yeni.length) {
+        var aralik = sheet.getRange(sheet.getLastRow() + 1, 1, yeni.length, 3);
+        aralik.offset(0, 0, yeni.length, 1).setNumberFormat("@"); // tarih Sheets tarafından dönüştürülmesin
+        aralik.setValues(yeni);
+    }
+
+    // Summary!$O$1'i referans alan formüller yeni veriyle yeniden hesaplansın
+    refreshData();
+}
+
+/**
+ * Gün sonu tetikleyicisini kurar: her gün 19:00–20:00 arası (İstanbul saati).
+ * BIST kapanışı ~18:00, Yahoo verisi ~15 dk gecikmeli; bu pencerede okunan
+ * fiyat kesinleşmiş kapanıştır.
+ *
+ * Apps Script editöründen bir kez çalıştırılır. Tekrar çalıştırmak mükerrer
+ * tetikleyici oluşturmaz, eskisini silip yenisini kurar. Kurulumun ardından
+ * bir kez kayıt alarak BYF_Gecmis sayfasını oluşturur.
+ */
+function kurTetikleyici() {
+    ScriptApp.getProjectTriggers().forEach(function (t) {
+        if (t.getHandlerFunction() === "byfGunSonuKaydet") {
+            ScriptApp.deleteTrigger(t);
+        }
+    });
+    ScriptApp.newTrigger("byfGunSonuKaydet")
+        .timeBased()
+        .everyDays(1)
+        .atHour(19)
+        .inTimezone(BYF_GECMIS_TZ)
+        .create();
+    Logger.log("Tetikleyici kuruldu: byfGunSonuKaydet her gün 19:00-20:00 (" + BYF_GECMIS_TZ + ")");
+    byfGunSonuKaydet();
+}
+
+/**
+ * BYF_CHANGE_PERIOD için TradingView'un veri vermediği durumdaki yedek yol.
+ * @return {number|string} oran; geçmişi biriktirilen sembolde yeterli veri yoksa ""
+ *         (%0,00 "değişim yok" diye okunup yanıltmasın), diğer sembollerde 0
+ */
+function _byfDonemYedek(symbol, days) {
+    var gecmis = _byfGecmisDegisim(symbol, days);
+    if (gecmis != null) {
+        Logger.log(symbol + " " + days + "d değişim (BYF_Gecmis): " + (gecmis * 100).toFixed(2) + "%");
+        return gecmis;
+    }
+    Logger.log("Değişim bulunamadı: " + symbol + " " + days + "d");
+    var takipte = BYF_GECMIS_SEMBOLLER.map(function (s) { return String(s).toUpperCase(); })
+        .indexOf(String(symbol).toUpperCase()) >= 0;
+    return takipte ? "" : 0;
+}
+
+/**
+ * BYF_Gecmis sayfasından dönemsel değişimi hesaplar:
+ * son kapanış / (son kayıttan `days` gün önceki ya da daha eski en yakın kapanış) - 1
+ * @return {number|null} oran; yeterli geçmiş yoksa null
+ */
+function _byfGecmisDegisim(symbol, days) {
+    var sheet = _byfGecmisSayfasi(false);
+    if (!sheet || sheet.getLastRow() < 2) {
+        return null;
+    }
+    var sembol = String(symbol).toUpperCase();
+    var kayitlar = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues()
+        .filter(function (r) {
+            return String(r[1]).toUpperCase() === sembol && r[2] !== "" && r[2] != null;
+        })
+        .map(function (r) {
+            return { tarih: _byfTarihMetni(r[0]), fiyat: Number(r[2]) };
+        })
+        .sort(function (a, b) {
+            return a.tarih < b.tarih ? -1 : (a.tarih > b.tarih ? 1 : 0);
+        });
+    if (kayitlar.length < 2) {
+        return null;
+    }
+
+    var son = kayitlar[kayitlar.length - 1];
+    var p = son.tarih.split("-");
+    var hedef = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]) - days * 86400000).toISOString().slice(0, 10);
+
+    // Hedef gün tatil/hafta sonuysa ondan önceki son işlem günü baz alınır
+    for (var i = kayitlar.length - 2; i >= 0; i--) {
+        if (kayitlar[i].tarih <= hedef) {
+            return kayitlar[i].fiyat ? son.fiyat / kayitlar[i].fiyat - 1 : null;
+        }
+    }
+    return null; // o kadar eskiye giden kayıt henüz yok
+}
+
+function _byfGecmisSayfasi(olustur) {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(BYF_GECMIS_SAYFA);
+    if (!sheet && olustur) {
+        sheet = ss.insertSheet(BYF_GECMIS_SAYFA);
+        sheet.getRange(1, 1, 1, 3).setValues([["Tarih", "Sembol", "Kapanış"]]);
+        sheet.setFrozenRows(1);
+    }
+    return sheet;
+}
+
+/** Tarih hücresini "yyyy-MM-dd" metnine çevirir (Sheets Date'e dönüştürmüşse de). */
+function _byfTarihMetni(v) {
+    if (v instanceof Date) {
+        return Utilities.formatDate(v, BYF_GECMIS_TZ, "yyyy-MM-dd");
+    }
+    return String(v).trim();
 }
 
 // ============================================================

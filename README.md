@@ -170,6 +170,27 @@ Bu durumda **Portföy → Verileri Yenile** de işe yaramaz — o mekanizma form
 
 **Dönüş:** Ondalık oran (100'e bölünmüş). Hücre formatını `%` yapınca doğru görünür.
 
+#### TradingView'un veri vermediği BYF'ler: gün sonu geçmişi
+
+TradingView bazı BYF'leri yanlışlıkla `mutual` (yatırım fonu) tipinde tutuyor ve `turkey` scanner bunlar için veri döndürmüyor (`totalCount: 0`). Aynı borsadaki `etf` etiketli BYF'ler (APX30, Z30KE) etkilenmiyor:
+
+| Sembol | TradingView tipi | Kaynak |
+|--------|------------------|--------|
+| `APX30.F`, `Z30KE.F` | `etf` | TradingView |
+| `ZPX30.F`, `Z30EA.F` | `mutual` | `BYF_Gecmis` sayfası |
+
+Bu semboller için Yahoo yalnızca günün fiyatını veriyor (`validRanges: ["1d","5d"]`, `range=5d` ile bile tek veri noktası dönüyor), fonyatirimcisi ve İş Yatırım ise BYF'leri kapsamıyor. Bu yüzden kapanış fiyatları her gün biriktirilir:
+
+- `byfGunSonuKaydet()` her gün **19:00–20:00 (İstanbul)** arasında zaman tetikleyicisiyle çalışır. Tablonun açık olması gerekmez. `BYF_GECMIS_SEMBOLLER` listesindeki sembollerin Yahoo fiyatını, ait olduğu işlem günüyle `BYF_Gecmis` sayfasına yazar. Aynı tarih + sembol için kayıt varsa üzerine yazar; hafta sonu ve tatilde yeni satır oluşmaz. Bitince `refreshData()` çağırır.
+- `BYF_CHANGE_PERIOD`, TradingView'dan veri alamazsa değişimi bu sayfadan hesaplar: `son kapanış / (N gün önceki ya da daha eski en yakın kapanış) − 1`.
+- Yeterli geçmiş yoksa listedeki semboller için **boş** döner, %0,00 "değişim yok" gibi okunmasın diye. Listede olmayan sembollerin davranışı değişmedi, onlar 0 döner.
+
+**Kurulum (bir kez):** Apps Script editöründen `kurTetikleyici()` çalıştırılır ve istenen yetkiler onaylanır. Tekrar çalıştırmak mükerrer tetikleyici oluşturmaz. Formüllere `Summary!$O$1` parametresi eklenmelidir ki her gece yeni veriyle yeniden hesaplansınlar: `=BYF_CHANGE_PERIOD(B7; 7; Summary!$O$1)`.
+
+**Kısıt:** Geçmiş kurulum gününden itibaren birikir, geriye dönük doldurulamaz. 7d bir hafta, 30d bir ay, 365d bir yıl sonra dolmaya başlar.
+
+**Yeni sembol:** TradingView'un tanımadığı başka bir BYF için `BYF_GECMIS_SEMBOLLER` listesine eklemek yeterli.
+
 ---
 
 ### TEFAS - Yatırım Fonu (fonyatirimcisi JSON API)
